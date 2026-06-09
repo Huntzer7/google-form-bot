@@ -94,7 +94,7 @@ LOOP_COUNT = 5
 #     0: {"mode": "fixed",    "value": 1},              # ข้อ 1 → เลือกตัวเลือกที่ 2 เสมอ
 #     1: {"mode": "range",    "min": 3, "max": 4},      # ข้อ 2 (ดาว5ดวง) → สุ่มแค่ 4★ หรือ 5★
 #     2: {"mode": "weighted", "weights": {0:10, 1:20,   # ข้อ 3 → สุ่มตาม % ที่กำหนด
-#                                         2:40, 3:20, 4:10}},
+#                                         2:40, 3:20, 4:10}}
 #     3: {"mode": "checkbox_fixed",    "values": [0,2]},# ข้อ 4 (checkbox) → ติ๊กช่อง 1,3
 #     4: {"mode": "checkbox_weighted", "weights": {0:80, # ข้อ 5 (checkbox) → ช่อง 1 โอกาส 80%
 #                                                  1:50, #                     ช่อง 2 โอกาส 50%
@@ -105,7 +105,7 @@ ANSWER_RULES = {
     # ตัวอย่าง — ลบออกและใส่กฎของตัวเองแทน:
     # 0: {"mode": "range",    "min": 3, "max": 4},   # สุ่มดาว 4-5 สำหรับคะแนน 5 ดาว
     # 1: {"mode": "weighted", "weights": {0:70, 1:30}},
-    2: {"mode": "fixed",    "value": 0},
+    #2: {"mode": "fixed",    "value": 0},
 }
 
 # --- 1.6 DEFAULT_RULE — กฎสำรองสำหรับทุกข้อที่ไม่ได้ระบุใน ANSWER_RULES ---
@@ -129,10 +129,15 @@ ANSWER_RULES = {
 #   weights: {1: 50, 2: 50, 3: 100} = ติ๊กทั้งสามช่องนี้ 50% ทุกครั้ง    
 #   DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 50, 2: 50, 3: 50}}
 # 
+#   ฟอร์มดาว สุ่มตาม % ที่กำหนดในทุกข้อ
+#   DEFAULT_RULE = {"mode": "weighted", "weights": {0:10, 1:20,   # → สุ่มตาม % ที่กำหนด
+#                                                   2:40, 3:20, 4:10}}
+#
 #   ปิด DEFAULT_RULE (สุ่มเต็ม 100% สำหรับข้อที่ไม่ระบุ):
 #   DEFAULT_RULE = None
 
-DEFAULT_RULE = {"mode": "range", "min": 3, "max": 4}
+
+DEFAULT_RULE = None
 
 # --- 1.7 Checkbox: จำนวนช่องที่สุ่มติ๊ก (กรณีไม่ได้ระบุ rule) ---
 # สุ่มจำนวนช่องระหว่าง min–max
