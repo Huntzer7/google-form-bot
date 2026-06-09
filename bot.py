@@ -47,7 +47,6 @@ import undetected_chromedriver as uc
 
 # --- 1.1 Target URL ---
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe8_ByL6g4ECx_XvzLd79qXJeJvaF8UWJYfYuZdR9EzL96BBw/viewform?usp=dialog"
-
 # --- 1.2 Submission Mode ---
 # True  → Mode A: Login ด้วย Google account ก่อนส่งแต่ละครั้ง
 # False → Mode B: ส่งแบบ anonymous วนตาม LOOP_COUNT
@@ -125,6 +124,10 @@ ANSWER_RULES = {
 #   ฟอร์มหลายตัวเลือก ทุกข้อ → เลือกตัวเลือกที่ 1 เสมอ:
 #   DEFAULT_RULE = {"mode": "fixed", "value": 0}
 #
+#   index 1 = ตัวเลือกที่ 2, index 3 = ตัวเลือกที่ 4 (นับจาก 0)
+#   weights: {1: 100, 3: 100} = ติ๊กทั้งสองช่องนี้ 100% ทุกครั้ง    
+#   DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 100, 3: 100}}
+# 
 #   ปิด DEFAULT_RULE (สุ่มเต็ม 100% สำหรับข้อที่ไม่ระบุ):
 #   DEFAULT_RULE = None
 
@@ -150,12 +153,10 @@ HEADLESS = True
 
 
 def build_driver(headless: bool = False):
-    """สร้าง Chrome WebDriver แบบมาตรฐาน (เสถียรที่สุดและไม่ติดสิทธิ์บน Replit)"""
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    import shutil
-
-    options = webdriver.ChromeOptions()
+    """สร้าง Chrome WebDriver ปรับแต่งสำหรับรันบน GitHub Codespaces (Linux)"""
+    options = uc.ChromeOptions()
+    
+    # บังคับรันแบบซ่อนหน้าต่างและเพิ่มความเสถียรบนระบบ Server
     if headless:
         options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -163,18 +164,10 @@ def build_driver(headless: bool = False):
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--start-maximized")
 
-    # ดึงที่อยู่เบราว์เซอร์จากไฟล์ replit.nix มาใช้งานตรงๆ
-    chrome_path = shutil.which("chromium") or shutil.which("chromium-browser")
-    driver_path = shutil.which("chromedriver")
-
-    if chrome_path:
-        options.binary_location = chrome_path
-
-    # สั่งรันผ่าน Service มาตรฐานของ Selenium
-    service = Service(executable_path=driver_path) if driver_path else Service()
-
-    driver = webdriver.Chrome(options=options, service=service)
-    driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)  # อ้างอิงตัวแปรเดิมในไฟล์
+    # ⚠️ สำคัญ: ชี้เป้าไปหา Google Chrome ที่เราติดตั้งไว้ใน Codespaces
+    driver = uc.Chrome(options=options, browser_executable_path='/usr/bin/google-chrome')
+    
+    driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
     return driver
 
 
@@ -437,38 +430,55 @@ def load_form(driver: uc.Chrome, url: str) -> bool:
         print(f"  [FORM] ❌ Error: {e}")
         return False
 
+def debug_form_structure(driver):
+    """ดู role ทั้งหมดที่มีในหน้าฟอร์ม"""
+    print("\n=== DEBUG: roles ที่พบในหน้า ===")
+    
+    # ดู role ทั้งหมด
+    elements = driver.find_elements(By.CSS_SELECTOR, "[role]")
+    role_counts = {}
+    for el in elements:
+        role = el.get_attribute("role")
+        role_counts[role] = role_counts.get(role, 0) + 1
+    
+    for role, count in sorted(role_counts.items()):
+        print(f"  role='{role}': {count} elements")
+    
+    print("\n=== DEBUG: container ที่น่าจะเป็นคำถาม ===")
+    # ลองหา listitem / list
+    for sel in ["[role='list']", "[role='listitem']", "[role='presentation']"]:
+        els = driver.find_elements(By.CSS_SELECTOR, sel)
+        if els:
+            print(f"  {sel}: พบ {len(els)} elements")
+    print("================================\n")
 
 def detect_question_type(container) -> str:
-    """
-    ตรวจสอบประเภทของ container element:
-      role="radiogroup" → TYPE_RADIO
-      role="group" ที่มี role="checkbox" ข้างใน → TYPE_CHECKBOX
-      อื่นๆ → TYPE_UNKNOWN
-    """
     role = container.get_attribute("role") or ""
     if role == "radiogroup":
         return TYPE_RADIO
     if role == "group":
         if container.find_elements(By.CSS_SELECTOR, "[role='checkbox']"):
             return TYPE_CHECKBOX
+    # ✅ เพิ่ม: รองรับ role='list' (Google Forms เวอร์ชันใหม่)
+    if role == "list":
+        if container.find_elements(By.CSS_SELECTOR, "[role='checkbox']"):
+            return TYPE_CHECKBOX
+        if container.find_elements(By.CSS_SELECTOR, "[role='radio']"):
+            return TYPE_RADIO
     return TYPE_UNKNOWN
 
 
 def discover_all_questions(driver: uc.Chrome) -> list:
-    """
-    สแกนหน้าและคืน list ของ question descriptor:
-    [{"index": int, "type": str, "element": WebElement}, ...]
-
-    เรียงตามตำแหน่ง Y บนหน้า (บนลงล่าง) เพื่อให้ index ตรงกับที่เห็นจริง
-    """
     try:
         radio_els = driver.find_elements(By.CSS_SELECTOR, "[role='radiogroup']")
         checkbox_els = driver.find_elements(By.CSS_SELECTOR, "[role='group']")
+        # ✅ เพิ่ม: ดึง role='list' ด้วย
+        list_els = driver.find_elements(By.CSS_SELECTOR, "[role='list']")
 
         questions = []
         seen_ids = set()
 
-        for el in radio_els + checkbox_els:
+        for el in radio_els + checkbox_els + list_els:
             q_type = detect_question_type(el)
             if q_type == TYPE_UNKNOWN or el.id in seen_ids:
                 continue
@@ -492,7 +502,6 @@ def discover_all_questions(driver: uc.Chrome) -> list:
     except Exception as e:
         print(f"  [PARSER] ❌ Error: {e}")
         return []
-
 
 # ─────────────────────────────────────────────────────────────
 # 3C. Per-type click handlers
@@ -641,6 +650,7 @@ def fill_and_submit_form(driver: uc.Chrome, answer_rules: dict) -> bool:
       2. ส่งแต่ละคำถามไปยัง handler ที่ถูกต้องตามประเภท
       3. กด Submit
     """
+    debug_form_structure(driver)
     questions = discover_all_questions(driver)
     if not questions:
         print("  [FORM] ❌ ไม่พบคำถามที่รองรับ — ยกเลิก")
