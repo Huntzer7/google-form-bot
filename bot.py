@@ -105,7 +105,7 @@ ANSWER_RULES = {
     # ตัวอย่าง — ลบออกและใส่กฎของตัวเองแทน:
     # 0: {"mode": "range",    "min": 3, "max": 4},   # สุ่มดาว 4-5 สำหรับคะแนน 5 ดาว
     # 1: {"mode": "weighted", "weights": {0:70, 1:30}},
-    # 2: {"mode": "fixed",    "value": 0},
+    2: {"mode": "fixed",    "value": 0},
 }
 
 # --- 1.6 DEFAULT_RULE — กฎสำรองสำหรับทุกข้อที่ไม่ได้ระบุใน ANSWER_RULES ---
@@ -132,7 +132,7 @@ ANSWER_RULES = {
 #   ปิด DEFAULT_RULE (สุ่มเต็ม 100% สำหรับข้อที่ไม่ระบุ):
 #   DEFAULT_RULE = None
 
-DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 50, 2: 50, 3: 50}}
+DEFAULT_RULE = {"mode": "range", "min": 3, "max": 4}
 
 # --- 1.7 Checkbox: จำนวนช่องที่สุ่มติ๊ก (กรณีไม่ได้ระบุ rule) ---
 # สุ่มจำนวนช่องระหว่าง min–max
@@ -140,7 +140,7 @@ CHECKBOX_RANDOM_TICK_RANGE = (1, 3)
 
 # --- 1.7 Delays ---
 DELAY_BETWEEN_ACTIONS = 0.5  # วินาที — หน่วงระหว่างแต่ละคลิก
-DELAY_BETWEEN_SUBMITS = 1.5  # วินาที — หน่วงระหว่างการส่งแต่ละครั้ง
+DELAY_BETWEEN_SUBMITS = 3  # วินาที — หน่วงระหว่างการส่งแต่ละครั้ง
 PAGE_LOAD_TIMEOUT = 30  # วินาที — รอหน้าโหลดสูงสุด
 
 # --- 1.8 Headless Mode ---
