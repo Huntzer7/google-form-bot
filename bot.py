@@ -25,7 +25,8 @@ USAGE:
     2. Run: python google_forms_bot.py
 ================================================================================
 """
-
+import json
+import os
 import time
 import random
 import traceback
@@ -50,14 +51,33 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe8_ByL6g4ECx_XvzLd79qXJeJv
 # --- 1.2 Submission Mode ---
 # True  → Mode A: Login ด้วย Google account ก่อนส่งแต่ละครั้ง
 # False → Mode B: ส่งแบบ anonymous วนตาม LOOP_COUNT
-LOGIN_REQUIRED = False
+LOGIN_REQUIRED = True
 
-# --- 1.3 Mode A: บัญชี Google (ใช้เมื่อ LOGIN_REQUIRED = True) ---
-ACCOUNTS = [
-    {"email": "account1@gmail.com", "password": "password1"},
-    {"email": "account2@gmail.com", "password": "password2"},
-    # เพิ่มบัญชีได้เรื่อยๆ...
-]
+# --- 1.3 Mode A: บัญชี Google ---
+# ACCOUNTS = [
+#     {"email": "account1@gmail.com", "password": "password1"},
+# ]
+
+# ✅ อ่านจากไฟล์แทน
+def load_accounts(filepath="gmail_list.txt") -> list:
+    accounts = []
+    try:
+        with open(filepath, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+                email, password = line.split(":", 1)
+                accounts.append({
+                    "email": email.strip(),
+                    "password": password.strip()
+                })
+        print(f"  [ACCOUNTS] โหลดสำเร็จ: {len(accounts)} บัญชี")
+    except FileNotFoundError:
+        print(f"  [ACCOUNTS] ❌ ไม่พบไฟล์ {filepath}")
+    return accounts
+
+ACCOUNTS = load_accounts()
 
 # --- 1.4 Mode B: จำนวนครั้งที่ส่ง (ใช้เมื่อ LOGIN_REQUIRED = False) ---
 LOOP_COUNT = 5
@@ -256,6 +276,56 @@ def _human_type(element, text: str) -> None:
         element.send_keys(char)
         time.sleep(random.uniform(0.05, 0.18))
 
+def save_cookies(driver, email: str) -> None:
+    """บันทึก cookie หลัง login สำเร็จ"""
+    os.makedirs("cookies", exist_ok=True)
+    filepath = f"cookies/{email}.json"
+    with open(filepath, "w") as f:
+        json.dump(driver.get_cookies(), f)
+    print(f"  [COOKIE] ✅ บันทึก: {filepath}")
+
+
+def load_cookies(driver, email: str) -> bool:
+    """โหลด cookie แทนการ login — คืน True ถ้าสำเร็จ"""
+    filepath = f"cookies/{email}.json"
+    if not os.path.exists(filepath):
+        return False
+    try:
+        driver.get("https://google.com")
+        time.sleep(1)
+        with open(filepath, "r") as f:
+            for cookie in json.load(f):
+                try:
+                    driver.add_cookie(cookie)
+                except:
+                    pass
+        driver.refresh()
+        time.sleep(2)
+        print(f"  [COOKIE] ✅ โหลด cookie: {email}")
+        return True
+    except Exception as e:
+        print(f"  [COOKIE] ❌ โหลดไม่ได้: {e}")
+        return False
+
+
+def load_accounts(filepath="gmail_list.txt") -> list:
+    """อ่านบัญชีจากไฟล์ gmail_list.txt"""
+    accounts = []
+    try:
+        with open(filepath, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+                email, password = line.split(":", 1)
+                accounts.append({
+                    "email": email.strip(),
+                    "password": password.strip()
+                })
+        print(f"  [ACCOUNTS] โหลดสำเร็จ: {len(accounts)} บัญชี")
+    except FileNotFoundError:
+        print(f"  [ACCOUNTS] ❌ ไม่พบไฟล์ {filepath}")
+    return accounts
 
 # ============================================================
 # SECTION 3: DYNAMIC FORM FILLER LOGIC
@@ -685,27 +755,32 @@ def fill_and_submit_form(driver: uc.Chrome, answer_rules: dict) -> bool:
 
 
 def run_mode_a_login(accounts: list, form_url: str, answer_rules: dict) -> None:
-    """Mode A — เปิด browser ใหม่ต่อ 1 บัญชี เพื่อป้องกัน session ปน"""
     total = len(accounts)
     print(f"\n{'=' * 60}")
     print(f"  MODE A — Login Submissions ({total} บัญชี)")
     print(f"{'=' * 60}\n")
 
     for i, account in enumerate(accounts, start=1):
-        print(f"\n--- บัญชี {i}/{total}: {account['email']} ---")
+        email = account["email"]
+        print(f"\n--- บัญชี {i}/{total}: {email} ---")
         driver = None
         try:
             driver = build_driver(headless=HEADLESS)
-            if not google_login(driver, account["email"], account["password"]):
-                print("  ⏭️  ข้าม — login ล้มเหลว")
-                continue
-            time.sleep(DELAY_BETWEEN_ACTIONS)
+
+            # ✅ ลองโหลด cookie ก่อน ถ้าไม่มีค่อย login แล้ว save
+            if not load_cookies(driver, email):
+                if not google_login(driver, email, account["password"]):
+                    print("  ⏭️  ข้าม — login ล้มเหลว")
+                    continue
+                save_cookies(driver, email)
+
             if not load_form(driver, form_url):
                 print("  ⏭️  ข้าม — โหลดฟอร์มไม่สำเร็จ")
                 continue
+
             print(f"\n  กำลังส่งฟอร์ม บัญชี {i}/{total}...")
             fill_and_submit_form(driver, answer_rules)
-            logout_and_clear(driver)
+
         except Exception as e:
             print(f"\n  ❌ Error บัญชี {i}/{total}: {e}")
             traceback.print_exc()
@@ -713,6 +788,7 @@ def run_mode_a_login(accounts: list, form_url: str, answer_rules: dict) -> None:
             if driver:
                 driver.quit()
                 print(f"  [BROWSER] ปิด browser บัญชี {i}/{total}")
+
         if i < total:
             print(f"\n  ⏳ รอ {DELAY_BETWEEN_SUBMITS}s ก่อนบัญชีถัดไป...")
             time.sleep(DELAY_BETWEEN_SUBMITS)

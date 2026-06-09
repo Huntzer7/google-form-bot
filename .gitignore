@@ -1,3 +1,5 @@
 *.deb
 *.deb
 gmail_list.txt
+emails.txt
+cookies/
