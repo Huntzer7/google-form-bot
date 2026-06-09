@@ -124,14 +124,15 @@ ANSWER_RULES = {
 #   ฟอร์มหลายตัวเลือก ทุกข้อ → เลือกตัวเลือกที่ 1 เสมอ:
 #   DEFAULT_RULE = {"mode": "fixed", "value": 0}
 #
-#   index 1 = ตัวเลือกที่ 2, index 3 = ตัวเลือกที่ 4 (นับจาก 0)
-#   weights: {1: 100, 3: 100} = ติ๊กทั้งสองช่องนี้ 100% ทุกครั้ง    
-#   DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 100, 3: 100}}
+#   ฟอร์มติ๊ก Checkbox ระหว่างช่องในทุกข้อ
+#   index 1 = ตัวเลือกที่ 2, index 2 = ตัวเลือกที่ 3, index 3 = ตัวเลือกที่ 4 (นับจาก 0)
+#   weights: {1: 50, 2: 50, 3: 100} = ติ๊กทั้งสามช่องนี้ 50% ทุกครั้ง    
+#   DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 50, 2: 50, 3: 50}}
 # 
 #   ปิด DEFAULT_RULE (สุ่มเต็ม 100% สำหรับข้อที่ไม่ระบุ):
 #   DEFAULT_RULE = None
 
-DEFAULT_RULE = None
+DEFAULT_RULE = {"mode": "checkbox_weighted", "weights": {1: 50, 2: 50, 3: 50}}
 
 # --- 1.7 Checkbox: จำนวนช่องที่สุ่มติ๊ก (กรณีไม่ได้ระบุ rule) ---
 # สุ่มจำนวนช่องระหว่าง min–max
