@@ -1,0 +1,8 @@
+ถ้ารันในคอมเพื่อน (Windows/Mac) ไม่ต้องใช้ Xvfb ครับ แค่นี้เลย:
+1. ติดตั้งก่อนครั้งแรกครั้งเดียว:
+pip install selenium webdriver-manager
+2. รัน bot:
+python3 bot.py
+แค่นั้นเลยครับ และอย่าลืมตั้งค่าใน bot.py:
+LOGIN_REQUIRED = True
+HEADLESS = False  # เปิดหน้าจอไว้ เผื่อ Google ถามยืนยัน

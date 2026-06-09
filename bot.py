@@ -51,7 +51,7 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe8_ByL6g4ECx_XvzLd79qXJeJv
 # --- 1.2 Submission Mode ---
 # True  → Mode A: Login ด้วย Google account ก่อนส่งแต่ละครั้ง
 # False → Mode B: ส่งแบบ anonymous วนตาม LOOP_COUNT
-LOGIN_REQUIRED = True
+LOGIN_REQUIRED = False
 
 # --- 1.3 Mode A: บัญชี Google ---
 # ACCOUNTS = [
@@ -165,12 +165,12 @@ CHECKBOX_RANDOM_TICK_RANGE = (1, 3)
 
 # --- 1.7 Delays ---
 DELAY_BETWEEN_ACTIONS = 0.5  # วินาที — หน่วงระหว่างแต่ละคลิก
-DELAY_BETWEEN_SUBMITS = 3  # วินาที — หน่วงระหว่างการส่งแต่ละครั้ง
+DELAY_BETWEEN_SUBMITS = 5  # วินาที — หน่วงระหว่างการส่งแต่ละครั้ง
 PAGE_LOAD_TIMEOUT = 30  # วินาที — รอหน้าโหลดสูงสุด
 
 # --- 1.8 Headless Mode ---
 # True = ซ่อนหน้าต่าง Chrome (แนะนำให้ทดสอบด้วย False ก่อน)
-HEADLESS = True
+HEADLESS = False
 
 
 # ============================================================
@@ -179,20 +179,27 @@ HEADLESS = True
 
 
 def build_driver(headless: bool = False):
-    """สร้าง Chrome WebDriver ปรับแต่งสำหรับรันบน GitHub Codespaces (Linux)"""
-    options = uc.ChromeOptions()
-    
-    # บังคับรันแบบซ่อนหน้าต่างและเพิ่มความเสถียรบนระบบ Server
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+
+    options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--start-maximized")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--blink-settings=imagesEnabled=false")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--window-size=1280,800")
+    # ลบ --single-process ออก ← ตัวการ crash
+    options.binary_location = "/usr/bin/google-chrome"
 
-    # ⚠️ สำคัญ: ชี้เป้าไปหา Google Chrome ที่เราติดตั้งไว้ใน Codespaces
-    driver = uc.Chrome(options=options, browser_executable_path='/usr/bin/google-chrome')
-    
+    service = Service("/usr/local/bin/chromedriver")
+    driver = webdriver.Chrome(options=options, service=service)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
     return driver
 
@@ -760,6 +767,10 @@ def run_mode_a_login(accounts: list, form_url: str, answer_rules: dict) -> None:
     print(f"  MODE A — Login Submissions ({total} บัญชี)")
     print(f"{'=' * 60}\n")
 
+    successful = 0
+    failed = 0
+    skipped = 0
+
     for i, account in enumerate(accounts, start=1):
         email = account["email"]
         print(f"\n--- บัญชี {i}/{total}: {email} ---")
@@ -767,27 +778,42 @@ def run_mode_a_login(accounts: list, form_url: str, answer_rules: dict) -> None:
         try:
             driver = build_driver(headless=HEADLESS)
 
-            # ✅ ลองโหลด cookie ก่อน ถ้าไม่มีค่อย login แล้ว save
-            if not load_cookies(driver, email):
-                if not google_login(driver, email, account["password"]):
-                    print("  ⏭️  ข้าม — login ล้มเหลว")
-                    continue
-                save_cookies(driver, email)
+            # ลองโหลด cookie ก่อน ถ้าไม่มีค่อย login
+            logged_in = load_cookies(driver, email)
+            if not logged_in:
+                logged_in = google_login(driver, email, account["password"])
+                if logged_in:
+                    save_cookies(driver, email)
+
+            if not logged_in:
+                print("  ⏭️  ข้าม — login ล้มเหลว")
+                skipped += 1
+                continue
 
             if not load_form(driver, form_url):
                 print("  ⏭️  ข้าม — โหลดฟอร์มไม่สำเร็จ")
+                skipped += 1
                 continue
 
             print(f"\n  กำลังส่งฟอร์ม บัญชี {i}/{total}...")
-            fill_and_submit_form(driver, answer_rules)
+            result = fill_and_submit_form(driver, answer_rules)
+            if result:
+                successful += 1
+            else:
+                failed += 1
 
         except Exception as e:
             print(f"\n  ❌ Error บัญชี {i}/{total}: {e}")
             traceback.print_exc()
+            failed += 1
         finally:
             if driver:
                 driver.quit()
                 print(f"  [BROWSER] ปิด browser บัญชี {i}/{total}")
+                # ✅ เคลียร์ process ค้างอยู่
+                import subprocess
+                subprocess.run(["pkill", "-f", "chrome"], capture_output=True)
+                time.sleep(2)
 
         if i < total:
             print(f"\n  ⏳ รอ {DELAY_BETWEEN_SUBMITS}s ก่อนบัญชีถัดไป...")
@@ -795,6 +821,7 @@ def run_mode_a_login(accounts: list, form_url: str, answer_rules: dict) -> None:
 
     print(f"\n{'=' * 60}")
     print(f"  Mode A เสร็จสิ้น — {total} บัญชี")
+    print(f"  ✅ สำเร็จ: {successful}  |  ❌ ล้มเหลว: {failed}  |  ⏭️  ข้าม: {skipped}")
     print(f"{'=' * 60}\n")
 
 
